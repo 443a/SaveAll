@@ -18,6 +18,18 @@ class TelegramController extends Controller
         $message = $update->getMessage();
         $callbackQuery = $update->getCallbackQuery();
 
+        // Get the user's language from the database (default to English if not set)
+        $user = TelegramUser::firstOrCreate(
+            ['chat_id' => $chatId],
+            [
+                'first_name' => $firstName,
+                'last_name' => $update->getChat()->getLastName(),
+                'username' => $update->getChat()->getUsername(),
+                'language' => 'en', // Default language
+            ]
+        );
+        $language = $user->language;
+
         // Handle callback queries (inline keyboard button clicks)
         if ($callbackQuery) {
             $data = $callbackQuery->getData();
@@ -28,10 +40,7 @@ class TelegramController extends Controller
                 $language = str_replace('lang_', '', $data);
 
                 // Save the selected language to the database
-                TelegramUser::updateOrCreate(
-                    ['chat_id' => $chatId],
-                    ['language' => $language]
-                );
+                $user->update(['language' => $language]);
 
                 // Send a confirmation message
                 Telegram::sendMessage([
@@ -48,16 +57,6 @@ class TelegramController extends Controller
         // Handle regular messages
         if ($message) {
             $text = $message->getText();
-
-            // Register or update user
-            TelegramUser::updateOrCreate(
-                ['chat_id' => $chatId],
-                [
-                    'first_name' => $firstName,
-                    'last_name' => $message->getChat()->getLastName(),
-                    'username' => $message->getChat()->getUsername(),
-                ]
-            );
 
             // Show the language selection menu at the beginning
             if ($text === '/start') {
