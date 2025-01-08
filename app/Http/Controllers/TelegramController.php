@@ -39,27 +39,6 @@ class TelegramController extends Controller
                     'text' => $this->getMessage('language_selected', $language),
                 ]);
 
-                // Show the time selection menu
-                $this->sendTimeSelectionMenu($chatId, $language);
-                return response()->json(['status' => 'success']);
-            }
-
-            // Handle time selection
-            if (str_starts_with($data, 'time_')) {
-                $time = str_replace('time_', '', $data);
-
-                // Save the selected time to the database (if needed)
-                TelegramUser::updateOrCreate(
-                    ['chat_id' => $chatId],
-                    ['selected_time' => $time]
-                );
-
-                // Send a confirmation message
-                Telegram::sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => $this->getMessage('time_selected', $language) . ": $time",
-                ]);
-
                 // Show the main menu in the selected language
                 $this->sendMainMenu($chatId, $language);
                 return response()->json(['status' => 'success']);
@@ -153,29 +132,6 @@ class TelegramController extends Controller
     }
 
     /**
-     * Send the time selection menu.
-     */
-    private function sendTimeSelectionMenu($chatId, $language)
-    {
-        $keyboard = Keyboard::make()
-            ->inline()
-            ->row([
-                Keyboard::inlineButton(['text' => '09:00 AM', 'callback_data' => 'time_09:00']),
-                Keyboard::inlineButton(['text' => '12:00 PM', 'callback_data' => 'time_12:00']),
-            ])
-            ->row([
-                Keyboard::inlineButton(['text' => '03:00 PM', 'callback_data' => 'time_15:00']),
-                Keyboard::inlineButton(['text' => '06:00 PM', 'callback_data' => 'time_18:00']),
-            ]);
-
-        Telegram::sendMessage([
-            'chat_id' => $chatId,
-            'text' => $this->getMessage('select_time', $language),
-            'reply_markup' => $keyboard,
-        ]);
-    }
-
-    /**
      * Send the main menu.
      */
     private function sendMainMenu($chatId, $language)
@@ -210,8 +166,6 @@ class TelegramController extends Controller
         $messages = [
             'en' => [
                 'language_selected' => 'You have selected English.',
-                'select_time' => 'Please select a time:',
-                'time_selected' => 'You have selected the time',
                 'main_menu' => 'How can I help you?',
                 'help' => 'Here is some help information...',
                 'invite_friends' => 'Invite your friends using this link: https://example.com/invite',
@@ -221,8 +175,6 @@ class TelegramController extends Controller
             ],
             'fa' => [
                 'language_selected' => 'شما فارسی را انتخاب کرده‌اید.',
-                'select_time' => 'لطفاً یک زمان انتخاب کنید:',
-                'time_selected' => 'شما زمان را انتخاب کرده‌اید',
                 'main_menu' => 'چگونه می‌توانم کمک کنم؟',
                 'help' => 'در اینجا برخی اطلاعات کمک وجود دارد...',
                 'invite_friends' => 'دوستان خود را با این لینک دعوت کنید: https://example.com/invite',
