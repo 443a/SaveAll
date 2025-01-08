@@ -15,84 +15,223 @@ class TelegramController extends Controller
 
         $chatId = $update->getChat()->getId();
         $firstName = $update->getChat()->getFirstName();
-        $lastName = $update->getChat()->getLastName();
-        $username = $update->getChat()->getUsername();
         $message = $update->getMessage();
-        $text = $message->getText();
+        $callbackQuery = $update->getCallbackQuery();
 
-        // Register or update user
-        TelegramUser::updateOrCreate(
-            ['chat_id' => $chatId], // Search by chat_id
-            [
-                'first_name' => $firstName,
-                'last_name' => $lastName,
-                'username' => $username,
-            ]
-        );
+        // Handle callback queries (inline keyboard button clicks)
+        if ($callbackQuery) {
+            $data = $callbackQuery->getData();
+            $chatId = $callbackQuery->getMessage()->getChat()->getId();
 
-        // Handle button clicks
-        switch ($text) {
-            case 'Help ❓':
+            // Handle language selection
+            if (str_starts_with($data, 'lang_')) {
+                $language = str_replace('lang_', '', $data);
+
+                // Save the selected language to the database
+                TelegramUser::updateOrCreate(
+                    ['chat_id' => $chatId],
+                    ['language' => $language]
+                );
+
+                // Send a confirmation message
                 Telegram::sendMessage([
                     'chat_id' => $chatId,
-                    'text' => 'Here is some help information...',
+                    'text' => $this->getMessage('language_selected', $language),
                 ]);
-                break;
 
-            case 'Invite Friends 🗽':
+                // Show the time selection menu
+                $this->sendTimeSelectionMenu($chatId, $language);
+                return response()->json(['status' => 'success']);
+            }
+
+            // Handle time selection
+            if (str_starts_with($data, 'time_')) {
+                $time = str_replace('time_', '', $data);
+
+                // Save the selected time to the database (if needed)
+                TelegramUser::updateOrCreate(
+                    ['chat_id' => $chatId],
+                    ['selected_time' => $time]
+                );
+
+                // Send a confirmation message
                 Telegram::sendMessage([
                     'chat_id' => $chatId,
-                    'text' => 'Invite your friends using this link: https://example.com/invite',
+                    'text' => $this->getMessage('time_selected', $language) . ": $time",
                 ]);
-                break;
 
-            case 'Support 🛟':
-                Telegram::sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => 'Contact support at support@example.com.',
-                ]);
-                break;
+                // Show the main menu in the selected language
+                $this->sendMainMenu($chatId, $language);
+                return response()->json(['status' => 'success']);
+            }
+        }
 
-            case 'Advertising 🍭':
-                Telegram::sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => 'For advertising inquiries, email ads@example.com.',
-                ]);
-                break;
+        // Handle regular messages
+        if ($message) {
+            $text = $message->getText();
 
-            case 'About US 🌀':
-                Telegram::sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => 'We are a company that does amazing things! Learn more at https://example.com/about.',
-                ]);
-                break;
+            // Register or update user
+            TelegramUser::updateOrCreate(
+                ['chat_id' => $chatId],
+                [
+                    'first_name' => $firstName,
+                    'last_name' => $message->getChat()->getLastName(),
+                    'username' => $message->getChat()->getUsername(),
+                ]
+            );
 
-            default:
-                // Send a custom keyboard if the message is not a button click
-                $keyboard = Keyboard::make()
-                    ->row([
-                        Keyboard::button('Help ❓'),
-                        Keyboard::button('Invite Friends 🗽'),
-                    ])
-                    ->row([
-                        Keyboard::button('Support 🛟'),
-                        Keyboard::button('Advertising 🍭'),
-                    ])
-                    ->row([
-                        Keyboard::button('About US 🌀'),
-                    ])
-                    ->setResizeKeyboard(true) // Automatically resize the keyboard to fit the buttons
-                    ->setOneTimeKeyboard(false); // Keep the keyboard visible after a button is pressed
+            // Show the language selection menu at the beginning
+            if ($text === '/start') {
+                $this->sendLanguageSelectionMenu($chatId);
+                return response()->json(['status' => 'success']);
+            }
 
-                // Send a hello message with the custom keyboard
-                Telegram::sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => "Hello, $firstName! How can I help you?",
-                    'reply_markup' => $keyboard,
-                ]);
-                break;
+            // Handle other commands or messages
+            switch ($text) {
+                case 'Help ❓':
+                    Telegram::sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => $this->getMessage('help', $language),
+                    ]);
+                    break;
+
+                case 'Invite Friends 🗽':
+                    Telegram::sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => $this->getMessage('invite_friends', $language),
+                    ]);
+                    break;
+
+                case 'Support 🛟':
+                    Telegram::sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => $this->getMessage('support', $language),
+                    ]);
+                    break;
+
+                case 'Advertising 🍭':
+                    Telegram::sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => $this->getMessage('advertising', $language),
+                    ]);
+                    break;
+
+                case 'About US 🌀':
+                    Telegram::sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => $this->getMessage('about_us', $language),
+                    ]);
+                    break;
+
+                default:
+                    // Send the main menu
+                    $this->sendMainMenu($chatId, $language);
+                    break;
+            }
         }
 
         return response()->json(['status' => 'success']);
+    }
+
+    /**
+     * Send the language selection menu.
+     */
+    private function sendLanguageSelectionMenu($chatId)
+    {
+        $keyboard = Keyboard::make()
+            ->inline()
+            ->row([
+                Keyboard::inlineButton(['text' => 'English', 'callback_data' => 'lang_en']),
+                Keyboard::inlineButton(['text' => 'فارسی', 'callback_data' => 'lang_fa']),
+            ]);
+
+        Telegram::sendMessage([
+            'chat_id' => $chatId,
+            'text' => 'Please select your language:',
+            'reply_markup' => $keyboard,
+        ]);
+    }
+
+    /**
+     * Send the time selection menu.
+     */
+    private function sendTimeSelectionMenu($chatId, $language)
+    {
+        $keyboard = Keyboard::make()
+            ->inline()
+            ->row([
+                Keyboard::inlineButton(['text' => '09:00 AM', 'callback_data' => 'time_09:00']),
+                Keyboard::inlineButton(['text' => '12:00 PM', 'callback_data' => 'time_12:00']),
+            ])
+            ->row([
+                Keyboard::inlineButton(['text' => '03:00 PM', 'callback_data' => 'time_15:00']),
+                Keyboard::inlineButton(['text' => '06:00 PM', 'callback_data' => 'time_18:00']),
+            ]);
+
+        Telegram::sendMessage([
+            'chat_id' => $chatId,
+            'text' => $this->getMessage('select_time', $language),
+            'reply_markup' => $keyboard,
+        ]);
+    }
+
+    /**
+     * Send the main menu.
+     */
+    private function sendMainMenu($chatId, $language)
+    {
+        $keyboard = Keyboard::make()
+            ->row([
+                Keyboard::button($this->getMessage('help', $language)),
+                Keyboard::button($this->getMessage('invite_friends', $language)),
+            ])
+            ->row([
+                Keyboard::button($this->getMessage('support', $language)),
+                Keyboard::button($this->getMessage('advertising', $language)),
+            ])
+            ->row([
+                Keyboard::button($this->getMessage('about_us', $language)),
+            ])
+            ->setResizeKeyboard(true)
+            ->setOneTimeKeyboard(false);
+
+        Telegram::sendMessage([
+            'chat_id' => $chatId,
+            'text' => $this->getMessage('main_menu', $language),
+            'reply_markup' => $keyboard,
+        ]);
+    }
+
+    /**
+     * Get a localized message based on the selected language.
+     */
+    private function getMessage($key, $language)
+    {
+        $messages = [
+            'en' => [
+                'language_selected' => 'You have selected English.',
+                'select_time' => 'Please select a time:',
+                'time_selected' => 'You have selected the time',
+                'main_menu' => 'How can I help you?',
+                'help' => 'Here is some help information...',
+                'invite_friends' => 'Invite your friends using this link: https://example.com/invite',
+                'support' => 'Contact support at support@example.com.',
+                'advertising' => 'For advertising inquiries, email ads@example.com.',
+                'about_us' => 'We are a company that does amazing things! Learn more at https://example.com/about.',
+            ],
+            'fa' => [
+                'language_selected' => 'شما فارسی را انتخاب کرده‌اید.',
+                'select_time' => 'لطفاً یک زمان انتخاب کنید:',
+                'time_selected' => 'شما زمان را انتخاب کرده‌اید',
+                'main_menu' => 'چگونه می‌توانم کمک کنم؟',
+                'help' => 'در اینجا برخی اطلاعات کمک وجود دارد...',
+                'invite_friends' => 'دوستان خود را با این لینک دعوت کنید: https://example.com/invite',
+                'support' => 'برای پشتیبانی با support@example.com تماس بگیرید.',
+                'advertising' => 'برای تبلیغات با ads@example.com تماس بگیرید.',
+                'about_us' => 'ما یک شرکت هستیم که کارهای شگفت‌انگیز انجام می‌دهیم! بیشتر بدانید: https://example.com/about.',
+            ],
+        ];
+
+        return $messages[$language][$key] ?? 'Message not found.';
     }
 }
